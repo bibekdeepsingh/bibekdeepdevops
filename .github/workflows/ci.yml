@@ -1,0 +1,69 @@
+name: CI-CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT }}
+
+      # Student Portfolio (frontend)
+      - name: Build Student Portfolio Image
+        run: |
+          docker build -t ghcr.io/bibekdeepsingh/bibekdeepdevops-studentportfolio:latest ./studentportfolio
+
+      # Backend
+      - name: Build Backend Image
+        run: |
+          docker build -t ghcr.io/bibekdeepsingh/bibekdeepdevops-backend:latest ./backend
+
+      # Transactions
+      - name: Build Transactions Image
+        run: |
+          docker build -t ghcr.io/bibekdeepsingh/bibekdeepdevops-transactions:latest ./transactions
+
+      # Push Images
+      - name: Push Images
+        run: |
+          docker push ghcr.io/bibekdeepsingh/bibekdeepdevops-studentportfolio:latest
+          docker push ghcr.io/bibekdeepsingh/bibekdeepdevops-backend:latest
+          docker push ghcr.io/bibekdeepsingh/bibekdeepdevops-transactions:latest
+
+      # Update GitOps Repo
+      - name: Update GitOps Repo With New Tags
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITOPS_PAT }}
+          script: |
+            const repo = process.env.GITOPS_REPO;
+            const [owner, rname] = repo.split("/");
+
+            const { execSync } = require("child_process");
+            execSync(`git clone https://github.com/${repo}.git gitops`, { stdio: "inherit" });
+
+            // Update image tags
+            execSync(`sed -i 's#ghcr.io/.*/bibekdeepdevops-studentportfolio:.*#ghcr.io/bibekdeepsingh/bibekdeepdevops-studentportfolio:latest#g' gitops/k8s/30-studentportfolio-deployment.yaml`);
+            execSync(`sed -i 's#ghcr.io/.*/bibekdeepdevops-backend:.*#ghcr.io/bibekdeepsingh/bibekdeepdevops-backend:latest#g' gitops/k8s/10-backend-deployment.yaml`);
+            execSync(`sed -i 's#ghcr.io/.*/bibekdeepdevops-transactions:.*#ghcr.io/bibekdeepsingh/bibekdeepdevops-transactions:latest#g' gitops/k8s/20-transactions-deployment.yaml`);
+
+            // Commit + push
+            execSync(`cd gitops && git config user.email "ci@github.com" && git config user.name "GitHub Actions"`, { stdio: "inherit" });
+            execSync(`cd gitops && git add .`, { stdio: "inherit" });
+            execSync(`cd gitops && git commit -m "Update image tags" || echo "No changes to commit"`, { stdio: "inherit" });
+            execSync(`cd gitops && git push https://x-access-token:${process.env.GITOPS_PAT}@github.com/${repo}.git main`, { stdio: "inherit" });
