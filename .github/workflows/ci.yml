@@ -48,6 +48,9 @@ jobs:
       # Update GitOps Repo
       - name: Update GitOps Repo With New Tags
         uses: actions/github-script@v6
+        env:
+          GITOPS_REPO: ${{ secrets.GITOPS_REPO }}
+          GITOPS_PAT: ${{ secrets.GITOPS_PAT }}
         with:
           github-token: ${{ secrets.GITOPS_PAT }}
           script: |
